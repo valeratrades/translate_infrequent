@@ -57,7 +57,7 @@
         ]);
       in
       {
-				packages.default = pkgs.writeShellScriptBin "run-python" ''
+				packages.default = pkgs.writeShellScriptBin "${pname}" ''
 						export PYTHONPATH="${self}:$PYTHONPATH"; ${pythonPkgs}/bin/python -m src "$@"
 						'';
 
