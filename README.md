@@ -6,6 +6,24 @@
 [<img alt="ci warnings" src="https://img.shields.io/github/actions/workflow/status/valeratrades/translate_infrequent/warnings.yml?branch=master&style=for-the-badge&style=flat-square&label=warnings&labelColor=d16002" height="20">](https://github.com/valeratrades/translate_infrequent/actions?query=branch%3Amaster) <!--NB: Won't find it if repo is private-->
 
 When learning a language, reading {books/other resources} in it is of great value. But on early stages of the process I find myself numbing my hands, having to translate 30% of all words I see. I will suffer no more, as now this thing does it for me.
+<!-- markdownlint-disable -->
+<details>
+  <summary>
+    <h3>Installation: Linux No Nixos</h3>
+  </summary>
+<pre><code class="language-sh">alias translate_infrequent='nix run "github:valeratrades/translate_infrequent" --'</code></pre>
+</details>
+<!-- markdownlint-restore -->
+<!-- markdownlint-disable -->
+<details>
+  <summary>
+    <h3>Installation: Nixos</h3>
+  </summary>
+<div class="markdown-content">packaged as normal under `.default`
+
+My config has `home.packages = [inputs.translate_infrequent.packages.${pkgs.system}.default]`</div>
+</details>
+<!-- markdownlint-restore -->
 
 ## Usage
 There are some cli flags (run with `--help` to see all), but target use is:
