@@ -1,1 +1,1 @@
-alias translate_infrequent='nix run "github:valeratrades/translate_infrequent"'
+alias translate_infrequent='nix run "github:valeratrades/translate_infrequent" --'
