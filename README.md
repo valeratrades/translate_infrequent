@@ -13,7 +13,7 @@ When learning a language, reading {books/other resources} in it is of great valu
     <h2>Installation</h2>
   </summary>
   <pre>
-    <code class="language-sh">alias translate_infrequent='nix run "github:valeratrades/translate_infrequent" --'</code></pre>
+    <code class="language-sh">alias translate_infrequent='nix run "github:valeratrades/translate_infrequent" --' # unless you have nix, then it's packaged as normal under .default</code></pre>
 </details>
 <!-- markdownlint-restore -->
 
