@@ -124,7 +124,7 @@ def filter_close_translations(translations: dict[str, str]) -> dict[str, str]:
 	filtered: dict[str, str] = {}
 	for word, translation in translations.items():
 		similarity = jaro_winkler(word, translation)
-		print(f"{word} -> {translation}: {similarity}")
+		L.debug(f"{word} -> {translation}: {similarity}")
 
 		if similarity < 0.8:
 			filtered[word] = translation
