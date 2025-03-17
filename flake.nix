@@ -50,6 +50,10 @@
         };
         pythonPkgs = pkgs.python3.withPackages (ps: with ps; [
           icecream
+					wordfreq
+					translatepy
+					jellyfish
+					unicodedata2
         ]);
       in
       {
