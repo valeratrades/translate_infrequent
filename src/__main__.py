@@ -1,20 +1,47 @@
 import src
 import logging
 import asyncio
+import sys
+import argparse
 from translatepy import Language
 
-# TODO: level -> exp n words known (like C2->15k, C1->8k, B2->5k, B1->2.5k, A2->1k, A1->500)
+
+def create_parser():
+	parser = argparse.ArgumentParser(description="Translate infrequent words in a text to help language learners")
+	parser.add_argument("-l", "--source-lang", type=str, help="Source language")
+	parser.add_argument("-t", "--target-lang", type=str, default="en", help='Target language. DEFAULT: "en"')
+	parser.add_argument("-k", "--known-words", type=int, help="Number of words known (number of most used words we don't translate). DEFAULT: 10_000")
+	parser.add_argument("-f", "--file", type=str, help="Input file (default: stdin)")
+	return parser
 
 
 def main():
-	logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+	logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 	src.L = logging.getLogger(__name__)
 
-	# TODO: allow for submission through stdin
-	text = "Hmm... ich spüre hinter diesem ganzen Spektakel mehrere Schichten. In erster Linie müssen die Lehrer uns entwaffnen. Aber das hätte viel einfacher und mit weniger Problemen gemacht werden können. Sie hätten Jungen und Mädchen in getrennte Räume gebracht, sie gründlich durchsucht und das wäre alles gewesen. Aber die Verwaltung zog einen schwierigeren Weg vor, es sind sofort mehrere erzieherische Momente zu erkennen."
+	parser = create_parser()
+	args = parser.parse_args()
 
-	out = asyncio.run(src.translate_infrequent(text, Language("de"), 10_000))
+	if args.known_words:
+		known_words = args.known_words
+	else:
+		known_words = 10_000
+
+	if args.file:
+		with open(args.file, "r", encoding="utf-8") as f:
+			text = f.read()
+	else:
+		if not sys.stdin.isatty():
+			text = sys.stdin.read()
+		else:
+			raise ValueError("No input text provided")
+
+	source_lang = Language(args.source_lang)
+	target_lang = Language(args.target_lang)
+
+	out = asyncio.run(src.translate_infrequent(text, source_lang, known_words, target_lang))
 	print(out)
 
 
 main()
+
