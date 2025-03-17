@@ -7,17 +7,6 @@
 
 When learning a language, reading {books/other resources} in it is of great value. But on early stages of the process I find myself numbing my hands, having to translate 30% of all words I see. I will suffer no more, as now this thing does it for me.
 
-<!-- markdownlint-disable -->
-<details>
-  <summary>
-    <h2>Installation</h2>
-  </summary>
-  <pre>
-    <code class="language-sh">alias translate_infrequent='nix run "github:valeratrades/translate_infrequent" --' # unless you have nix, then it's packaged as normal under .default</code></pre>
-</details>
-<!-- markdownlint-restore -->
-
-
 ## Usage
 There are some cli flags (run with `--help` to see all), but target use is:
 ```sh
