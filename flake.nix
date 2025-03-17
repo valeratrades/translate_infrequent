@@ -58,8 +58,7 @@
       in
       {
 				packages.default = pkgs.writeShellScriptBin "run-python" ''
-						export PYTHONPATH="${self}"
-						${pythonPkgs}/bin/python -m src "$@"
+						export PYTHONPATH="${self}"; ${pythonPkgs}/bin/python -m src "$@"
 						'';
 
         devShells.default =
