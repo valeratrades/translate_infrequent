@@ -17,7 +17,7 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 	assert isinstance(known_words, int), f"known_words must be int, got {type(known_words).__name__}"
 	assert isinstance(dest_lang, Language), f"dest_lang must be Language, got {type(dest_lang).__name__}"
 
-	words_initial_order = re.split(r"[\s,.!?\(\)]+", text)
+	words_initial_order = re.split(r"[\s,.!?\(\)\"–]+", text)
 	words_set = set(words_initial_order)
 	try:
 		# gets appended in some cases for some reason
