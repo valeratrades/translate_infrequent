@@ -30,7 +30,7 @@ My config has `home.packages = [inputs.translate_infrequent.packages.${pkgs.syst
 ## Usage
 There are some cli flags (run with `--help` to see all), but target use is:
 ```sh
-echo "Muss mich rasieren, igitt" | translate_infrequent -l "de" -w "5_000"
+echo "Muss mich rasieren, igitt" | translate_infrequent -l "de"
 ```
 // which with current defaults is likely to output
 ```

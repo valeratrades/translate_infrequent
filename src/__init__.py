@@ -67,9 +67,12 @@ def find_rare_words(words: set[str], src_lang: Language, known_words: int = 10_0
 
 	rare_words: set[str] = set()
 	zipf_s = lang_zipf_s(src_lang)
-	dub_unknown_threshold = 1 / (known_words**zipf_s)
+	if known_words == 0:
+		dub_unknown_threshold = float('inf')  # All words are rare when known_words=0
+	else:
+		dub_unknown_threshold = 1 / (known_words**zipf_s)
 	for word in words:
-		freq = word_frequency(word, src_lang.alpha2)
+		freq = word_frequency(word.lower(), src_lang.alpha2)
 		# 0.0 would mean it's likely a name or technical term, so don't attempt to translate
 		if freq < dub_unknown_threshold and freq != 0.0:
 			rare_words.add(word)
