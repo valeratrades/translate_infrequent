@@ -114,6 +114,8 @@ async def batch_translate(words: set[str], src_lang: Language, dest_lang: Langua
 		try:
 			translation = await loop.run_in_executor(None, lambda: translator.translate(word, source_language=src_lang.alpha2, destination_language=dest_lang.alpha2))
 			logger.debug(f"translate_word: '{word}' -> '{translation.result}'")
+			logger.debug(f"translate_word: '{word}' full response: {vars(translation)}")
+
 			return word, translation.result
 		except Exception as e:
 			logger.error(f"Error translating '{word}': {str(e)}")

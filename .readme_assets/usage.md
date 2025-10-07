@@ -1,8 +1,8 @@
 There are some cli flags (run with `--help` to see all), but target use is:
 ```sh
-echo "Muss mich rasieren, igitt" | translate_infrequent -l "de"
+echo "muss mein Yak rasieren" | translate_infrequent -l "de" -w "5_000" 2>/dev/null
 ```
-// which with current defaults is likely to output
+Returning 
 ```
-Muss mich rasieren {shave}, igitt
+muss mein Yak rasieren {shave}
 ```
