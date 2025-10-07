@@ -7,8 +7,18 @@ import re
 import asyncio
 import translatepy
 import unicodedata
+import sys
+import logging
 
 __all__ = ["run"]
+
+# Configure logging to write to stderr
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr
+)
+logger = logging.getLogger(__name__)
 
 
 async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language) -> str:
@@ -28,7 +38,9 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 	rare_words = find_rare_words(words_set, src_lang, known_words)
 
 	word_translations: dict[str, str] = await batch_translate(rare_words, src_lang, dest_lang)  # BOTTLENECK
+	logger.debug(f"translate_infrequent: raw_translations={word_translations}")
 	word_translations = filter_close_translations(word_translations)
+	logger.debug(f"translate_infrequent: filtered_translations={word_translations}")
 
 	compose = ""
 	i = 0
@@ -36,8 +48,11 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 		word_start_i = text.index(word, i)
 
 		add_word = None  # hate python
-		if word in word_translations:
-			add_word = word + " {" + word_translations[word] + "}"
+		# Check both original case and lowercase for translations
+		in_translations = word in word_translations or word.lower() in word_translations
+		translation_key = word if word in word_translations else word.lower()
+		if in_translations:
+			add_word = word + " {" + word_translations[translation_key] + "}"
 		else:
 			add_word = word
 
@@ -71,12 +86,19 @@ def find_rare_words(words: set[str], src_lang: Language, known_words: int = 10_0
 		dub_unknown_threshold = float('inf')  # All words are rare when known_words=0
 	else:
 		dub_unknown_threshold = 1 / (known_words**zipf_s)
+
+	logger.debug(f"find_rare_words: known_words={known_words}, zipf_s={zipf_s}, threshold={dub_unknown_threshold}")
+
 	for word in words:
 		freq = word_frequency(word.lower(), src_lang.alpha2)
+		is_rare = freq < dub_unknown_threshold and freq != 0.0
+		logger.debug(f"find_rare_words: word='{word}' (lower='{word.lower()}'), freq={freq}, is_rare={is_rare}")
 		# 0.0 would mean it's likely a name or technical term, so don't attempt to translate
-		if freq < dub_unknown_threshold and freq != 0.0:
-			rare_words.add(word)
+		if is_rare:
+			# Store the lowercased version for consistent lookup
+			rare_words.add(word.lower())
 
+	logger.debug(f"find_rare_words: rare_words={rare_words}")
 	return rare_words
 
 
@@ -91,9 +113,10 @@ async def batch_translate(words: set[str], src_lang: Language, dest_lang: Langua
 		loop = asyncio.get_running_loop()
 		try:
 			translation = await loop.run_in_executor(None, lambda: translator.translate(word, source_language=src_lang.alpha2, destination_language=dest_lang.alpha2))
+			logger.debug(f"translate_word: '{word}' -> '{translation.result}'")
 			return word, translation.result
 		except Exception as e:
-			print(f"Error translating '{word}': {str(e)}")
+			logger.error(f"Error translating '{word}': {str(e)}")
 			return word, word  # Fallback to original word
 
 	translator = translatepy.translators.google.GoogleTranslate()
@@ -127,9 +150,12 @@ def filter_close_translations(translations: dict[str, str]) -> dict[str, str]:
 	filtered: dict[str, str] = {}
 	for word, translation in translations.items():
 		similarity = jaro_winkler(word, translation)
-		L.debug(f"{word} -> {translation}: {similarity}")
-
-		if similarity < 0.8:
+		logger.debug(f"filter_close_translations: {word} -> {translation}: similarity={similarity}")
+		# Filter out translations that are too similar
+		if similarity <= 0.88: # borderline word: "muss {must}", - last thing that's being assumed to be similar enough to fall into guessing range, with `<= 0.88" 
 			filtered[word] = translation
+			logger.debug(f"filter_close_translations: KEPT {word} -> {translation}")
+		else:
+			logger.debug(f"filter_close_translations: REMOVED {word} -> {translation} (too similar)")
 
 	return filtered
