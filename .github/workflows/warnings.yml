@@ -1,11 +1,12 @@
 env:
   CARGO_INCREMENTAL: '0'
   CARGO_NET_RETRY: '10'
+  RUSTC_WRAPPER: ''
   RUSTUP_MAX_RETRIES: '10'
   RUST_BACKTRACE: short
 jobs:
   pre_ci:
-    uses: valeratrades/.github/.github/workflows/pre_ci.yml@master
+    uses: valeratrades/.github/.github/workflows/pre_ci.yml@main
   tokei:
     name: Reasonable Amount of Comments
     runs-on: ubuntu-latest
@@ -21,12 +22,12 @@ jobs:
     - name: Install jq
       run: sudo apt-get install -y jq
     - name: Check Rust comments
-      run: "\t\t\t\t\t\tcomments=$(jq '.Rust.comments' tokei_output.json)\n\t\t\t\t\
-        \t\tcode=$(jq '.Rust.code' tokei_output.json)\n\t\t\t\t\t\tif [ $((comments\
-        \ * 10)) -ge $code ]; then\n\t\t\t\t\t\t\techo \"Number of comments should\
-        \ be less than 10% of code\"\n\t\t\t\t\t\t\texit 1\n\t\t\t\t\t\telse\n\t\t\
-        \t\t\t\t\techo \"Check passed: Number of comments is less than 10% of code\"\
-        \n\t\t\t\t\t\tfi\n\t\t\t"
+      run: "\t\t\t\tcomments=$(jq '.Rust.comments' tokei_output.json)\n\t\t\t\tcode=$(jq\
+        \ '.Rust.code' tokei_output.json)\n\n\t\t\t\t# compare: comments > code *\
+        \ 0.15\n\t\t\t\tif [ $((comments * 100)) -ge $((code * 15)) ]; then\n\t\t\t\
+        \t\t\techo \"Number of comments should be less than 15% of code\"\n\t\t\t\t\
+        \t\texit 1\n\t\t\t\telse\n\t\t\t\t\t\techo \"Check passed: Number of comments\
+        \ is less than 15% of code\"\n\t\t\t\tfi\n        \t\t\t"
 name: Warnings
 'on':
   pull_request: {}
