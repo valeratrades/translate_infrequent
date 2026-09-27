@@ -16,7 +16,20 @@
         rust = v_flakes.rs.default_nightly system;
         pre-commit-check = pre-commit-hooks.lib.${system}.run (v_flakes.files.preCommit { inherit pkgs; });
 
+        rustPlatform = pkgs.makeRustPlatform { rustc = rust; cargo = rust; };
+        askLlmPy = pkgs.python312.pkgs.buildPythonPackage {
+          pname = "ask_llm_py";
+          version = "0.1.0";
+          format = "pyproject";
+          src = ./ask_llm_py;
+          cargoDeps = rustPlatform.importCargoLock { lockFile = ./ask_llm_py/Cargo.lock; };
+          nativeBuildInputs = [ rustPlatform.cargoSetupHook rustPlatform.maturinBuildHook rust pkgs.maturin ];
+          RUSTC = "${rust}/bin/rustc";
+          CARGO = "${rust}/bin/cargo";
+        };
+
         pythonPkgs = pkgs.python312.withPackages (ps: with ps; [
+          askLlmPy
           icecream
           wordfreq
           translatepy

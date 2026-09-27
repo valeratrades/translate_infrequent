@@ -12,6 +12,8 @@ def create_parser():
 	parser.add_argument("-t", "--target-lang", type=str, default="en", help='Target language. DEFAULT: "en"')
 	parser.add_argument("-w", "--words-n", type=int, help="Number of most used words we don't translate. DEFAULT: 5_000")
 	parser.add_argument("-f", "--file", type=str, help="Input file (default: stdin)")
+	parser.add_argument("-b", "--backend", choices=src.TRANSLATORS, default="google", help='Translation backend. DEFAULT: "google"')
+	parser.add_argument("--fallback", choices=src.TRANSLATORS, default="ask_llm", help='Backend used once the primary one hits a captcha. DEFAULT: "ask_llm"')
 	return parser
 
 
@@ -39,7 +41,7 @@ def main():
 	source_lang = Language(args.source_lang)
 	target_lang = Language(args.target_lang)
 
-	out = asyncio.run(src.translate_infrequent(text, source_lang, words_n, target_lang))
+	out = asyncio.run(src.translate_infrequent(text, source_lang, words_n, target_lang, src.TRANSLATORS[args.backend](), src.TRANSLATORS[args.fallback]()))
 	print(out)
 
 

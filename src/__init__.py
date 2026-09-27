@@ -3,6 +3,9 @@ from .lib import L  # noqa: F401
 from icecream import ic  # noqa: F401
 from wordfreq import word_frequency
 from translatepy import Language
+from translatepy.utils.request import Request
+from typing import Protocol
+import ask_llm_py
 import re
 import asyncio
 import translatepy
@@ -10,7 +13,7 @@ import unicodedata
 import sys
 import logging
 
-__all__ = ["run"]
+__all__ = ["translate_infrequent", "TRANSLATORS"]
 
 # Configure logging to write to stderr
 logging.basicConfig(
@@ -21,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language) -> str:
+async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator") -> str:
 	assert isinstance(text, str), f"text must be str, got {type(text).__name__}"
 	assert isinstance(src_lang, Language), f"src_lang must be Language, got {type(src_lang).__name__}"
 	assert isinstance(known_words, int), f"known_words must be int, got {type(known_words).__name__}"
@@ -29,15 +32,11 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 
 	words_initial_order = re.split(r"[\s,.!?\(\)\"–:\[\]{}<>|/\\;]+", text)
 	words_set = set(words_initial_order)
-	try:
-		# gets appended in some cases for some reason
-		words_set.pop("")
-	except:
-		pass
+	words_set.discard("")  # split yields it at text edges
 
 	rare_words = find_rare_words(words_set, src_lang, known_words)
 
-	word_translations: dict[str, str] = await batch_translate(rare_words, src_lang, dest_lang)  # BOTTLENECK
+	word_translations: dict[str, str] = await batch_translate(rare_words, src_lang, dest_lang, primary, fallback)  # BOTTLENECK
 	logger.debug(f"translate_infrequent: raw_translations={word_translations}")
 	word_translations = filter_close_translations(word_translations)
 	logger.debug(f"translate_infrequent: filtered_translations={word_translations}")
@@ -102,39 +101,86 @@ def find_rare_words(words: set[str], src_lang: Language, known_words: int = 10_0
 	return rare_words
 
 
-async def batch_translate(words: set[str], src_lang: Language, dest_lang: Language) -> dict[str, str]:
-	assert isinstance(words, set), f"words must be set[str], got {type(words).__name__}"
-	assert all(isinstance(word, str) for word in words), "all elements in words must be str"
-	assert isinstance(src_lang, Language), f"src_lang must be Language, got {type(src_lang).__name__}"
-	assert isinstance(dest_lang, Language), f"dest_lang must be Language, got {type(dest_lang).__name__}"
+class CaptchaError(Exception):
+	def __init__(self, done: dict[str, str], remaining: set[str]):
+		super().__init__(f"captcha after {len(done)} words, {len(remaining)} remaining")
+		self.done = done
+		self.remaining = remaining
 
-	async def translate_word(translator, word, src_lang: Language, dest_lang: Language):
-		# Run the synchronous translation in a thread pool to avoid blocking the event loop
+
+class Translator(Protocol):
+	async def translate(self, words: set[str], src_lang: Language, dest_lang: Language) -> dict[str, str]: ...
+
+
+class GoogleWeb:
+	"""translate.google.com's web RPC; rate-limits by redirecting to a captcha at google.com/sorry/"""
+
+	def __init__(self):
+		request = Request()
+		request.session.hooks["response"].append(self._detect_captcha)  # translatepy swallows service errors, so the redirect itself is the only reliable signal
+		self.translator = translatepy.translators.google.GoogleTranslate(request=request)
+		self.captcha = False
+
+	def _detect_captcha(self, response, *args, **kwargs):
+		if response.status_code == 429 or "/sorry/" in response.url or "/sorry/" in response.headers.get("location", ""):
+			self.captcha = True
+
+	async def translate(self, words: set[str], src_lang: Language, dest_lang: Language) -> dict[str, str]:
 		loop = asyncio.get_running_loop()
-		try:
-			translation = await loop.run_in_executor(None, lambda: translator.translate(word, source_language=src_lang.alpha2, destination_language=dest_lang.alpha2))
-			logger.debug(f"translate_word: '{word}' -> '{translation.result}'")
-			logger.debug(f"translate_word: '{word}' full response: {vars(translation)}")
 
+		async def translate_word(word: str) -> tuple[str, str | None]:
+			if self.captcha:
+				return word, None
+			try:
+				translation = await loop.run_in_executor(None, lambda: self.translator.translate(word, source_language=src_lang.alpha2, destination_language=dest_lang.alpha2))
+			except Exception:
+				if self.captcha:
+					return word, None
+				raise
+			logger.debug(f"GoogleWeb: '{word}' -> '{translation.result}'")
 			return word, translation.result
-		except Exception as e:
-			logger.error(f"Error translating '{word}': {str(e)}")
-			return word, word  # Fallback to original word
 
-	translator = translatepy.translators.google.GoogleTranslate()
-	tasks = []
+		done = {w: t for w, t in await asyncio.gather(*(translate_word(w) for w in words)) if t is not None}
+		if self.captcha:
+			raise CaptchaError(done, words - done.keys())
+		return done
 
-	for word in words:
-		task = translate_word(translator, word, src_lang, dest_lang)
-		tasks.append(task)
 
-	results = {}
-	completed_tasks = await asyncio.gather(*tasks)
+class AskLlm:
+	BATCH = 100
 
-	for word, translation in completed_tasks:
-		results[word] = translation
+	async def translate(self, words: set[str], src_lang: Language, dest_lang: Language) -> dict[str, str]:
+		loop = asyncio.get_running_loop()
+		ordered = sorted(words)
+		batches = [ordered[i : i + self.BATCH] for i in range(0, len(ordered), self.BATCH)]
+		results: dict[str, str] = {}
+		for part in await asyncio.gather(*(loop.run_in_executor(None, self._translate_batch, b, src_lang, dest_lang) for b in batches)):
+			results |= part
+		return results
 
-	return results
+	@staticmethod
+	def _translate_batch(batch: list[str], src_lang: Language, dest_lang: Language) -> dict[str, str]:
+		numbered = "\n".join(f"{i}. {w}" for i, w in enumerate(batch, 1))
+		prompt = f"Translate each {src_lang.name} word to {dest_lang.name}. Reply with exactly {len(batch)} lines formatted `N. translation`, keeping the numbering, nothing else.\n\n{numbered}"
+		answer = ask_llm_py.ask(prompt, "Translate")
+		got: dict[int, str] = {}
+		for line in answer.splitlines():
+			if m := re.match(r"^\s*(\d+)\.\s*(.+?)\s*$", line):
+				got[int(m[1])] = m[2]
+		if set(got) != set(range(1, len(batch) + 1)):
+			raise RuntimeError(f"ask_llm answered {sorted(got)} for {len(batch)} numbered words:\n{answer}")
+		return {w: got[i] for i, w in enumerate(batch, 1)}
+
+
+TRANSLATORS: dict[str, type] = {"google": GoogleWeb, "ask_llm": AskLlm}
+
+
+async def batch_translate(words: set[str], src_lang: Language, dest_lang: Language, primary: Translator, fallback: Translator) -> dict[str, str]:
+	try:
+		return await primary.translate(words, src_lang, dest_lang)
+	except CaptchaError as e:
+		logger.warning(f"{type(primary).__name__} hit a captcha; translating {len(e.remaining)} remaining words via {type(fallback).__name__}")
+		return e.done | await fallback.translate(e.remaining, src_lang, dest_lang)
 
 
 def filter_close_translations(translations: dict[str, str]) -> dict[str, str]:
