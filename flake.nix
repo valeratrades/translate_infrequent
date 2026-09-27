@@ -45,6 +45,7 @@
           enable = true;
           lastSupportedVersion = pythonVersion;
           jobs.warnings.augment = [ "tokei" ];
+          gitignore.extra = "ask_llm_py/target";
         };
         readme = v_flakes.readme-fw {
           inherit pkgs pname;
