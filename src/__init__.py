@@ -158,18 +158,25 @@ class AskLlm:
 			results |= part
 		return results
 
-	@staticmethod
-	def _translate_batch(batch: list[str], src_lang: Language, dest_lang: Language) -> dict[str, str]:
-		numbered = "\n".join(f"{i}. {w}" for i, w in enumerate(batch, 1))
-		prompt = f"Translate each {src_lang.name} word to {dest_lang.name}. Reply with exactly {len(batch)} lines formatted `N. translation`, keeping the numbering, nothing else.\n\n{numbered}"
-		answer = ask_llm_py.ask(prompt, "Translate")
-		got: dict[int, str] = {}
-		for line in answer.splitlines():
-			if m := re.match(r"^\s*(\d+)\.\s*(.+?)\s*$", line):
-				got[int(m[1])] = m[2]
-		if set(got) != set(range(1, len(batch) + 1)):
-			raise RuntimeError(f"ask_llm answered {sorted(got)} for {len(batch)} numbered words:\n{answer}")
-		return {w: got[i] for i, w in enumerate(batch, 1)}
+	ROUNDS = 3  # the model occasionally drops lines from a long numbered list
+
+	@classmethod
+	def _translate_batch(cls, batch: list[str], src_lang: Language, dest_lang: Language) -> dict[str, str]:
+		results: dict[str, str] = {}
+		missing = batch
+		for _ in range(cls.ROUNDS):
+			numbered = "\n".join(f"{i}. {w}" for i, w in enumerate(missing, 1))
+			prompt = f"Translate each {src_lang.name} word to {dest_lang.name}. Reply with exactly {len(missing)} lines formatted `N. translation`, keeping the numbering, nothing else.\n\n{numbered}"
+			got: dict[int, str] = {}
+			for line in ask_llm_py.ask(prompt, "Translate").splitlines():
+				if m := re.match(r"^\s*(\d+)\.\s*(.+?)\s*$", line):
+					got[int(m[1])] = m[2]
+			results |= {w: got[i] for i, w in enumerate(missing, 1) if i in got}
+			missing = [w for w in missing if w not in results]
+			if not missing:
+				return results
+			logger.warning(f"AskLlm: {len(missing)} of {len(batch)} words missing from the answer, re-asking")
+		raise RuntimeError(f"AskLlm: after {cls.ROUNDS} rounds, no translation for {missing}")
 
 
 TRANSLATORS: dict[str, type] = {"google": GoogleWeb, "ask_llm": AskLlm}
