@@ -167,9 +167,12 @@ class AskLlm:
 		for _ in range(cls.ROUNDS):
 			numbered = "\n".join(f"{i}. {w}" for i, w in enumerate(missing, 1))
 			prompt = f"Translate each {src_lang.name} word to {dest_lang.name}. Reply with exactly {len(missing)} lines formatted `N. translation`, keeping the numbering, nothing else.\n\n{numbered}"
+			lines = [l.strip() for l in ask_llm_py.ask(prompt, "Translate").splitlines() if l.strip()]
 			got: dict[int, str] = {}
-			for line in ask_llm_py.ask(prompt, "Translate").splitlines():
-				if m := re.match(r"^\s*(\d+)\.\s*(.+?)\s*$", line):
+			if len(missing) == 1 and len(lines) == 1 and not re.match(r"^\d+\.", lines[0]):  # a lone word comes back unnumbered
+				got[1] = lines[0]
+			for line in lines:
+				if m := re.match(r"^(\d+)\.\s*(.+?)$", line):
 					got[int(m[1])] = m[2]
 			results |= {w: got[i] for i, w in enumerate(missing, 1) if i in got}
 			missing = [w for w in missing if w not in results]

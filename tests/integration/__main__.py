@@ -29,7 +29,7 @@ def main():
 		(
 			test_phrase,
 			[("-l", "de"), ("-w", "10_000"), ("-b", "ask_llm")],
-			"Muss mein Yak rasieren {shave}"
+			"Muss mein Yak rasieren {to shave}"
 		),
 	]
 
