@@ -31,6 +31,11 @@ def main():
 			[("-l", "de"), ("-w", "10_000"), ("-b", "ask_llm")],
 			"Muss mein Yak rasieren {to shave}"
 		),
+		(
+			test_phrase,
+			[("-l", "de"), ("-w", "1"), ("-p",)],
+			"Muss mein {my [maɪn]} Yak rasieren {shave [raziːrən]}"
+		),
 	]
 
 	print("Running integration tests for translate_infrequent")

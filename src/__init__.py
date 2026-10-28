@@ -2,6 +2,8 @@ from typing import Any, Self, Union, Optional, List, Tuple, Callable, TypeVar, G
 from .lib import L  # noqa: F401
 from icecream import ic  # noqa: F401
 from wordfreq import word_frequency
+from phonemizer import phonemize
+from phonemizer.backend import EspeakBackend
 from translatepy import Language
 from translatepy.utils.request import Request
 from typing import Protocol
@@ -24,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator") -> str:
+async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool) -> str:
 	assert isinstance(text, str), f"text must be str, got {type(text).__name__}"
 	assert isinstance(src_lang, Language), f"src_lang must be Language, got {type(src_lang).__name__}"
 	assert isinstance(known_words, int), f"known_words must be int, got {type(known_words).__name__}"
@@ -40,6 +42,14 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 	logger.debug(f"translate_infrequent: raw_translations={word_translations}")
 	word_translations = filter_close_translations(word_translations)
 	logger.debug(f"translate_infrequent: filtered_translations={word_translations}")
+	if phonetic:
+		espeak_voices = EspeakBackend.supported_languages()
+		if src_lang.alpha2 not in espeak_voices:
+			raise ValueError(f"no espeak voice for '{src_lang.name}' ({src_lang.alpha2})")
+		glossed = list(word_translations)
+		ipas = phonemize(glossed, language=src_lang.alpha2, backend="espeak", strip=True)
+		assert len(ipas) == len(glossed) and all(ipas), f"phonemize returned {ipas} for {glossed}"
+		word_translations = {w: f"{word_translations[w]} [{ipa}]" for w, ipa in zip(glossed, ipas)}
 
 	compose = ""
 	i = 0

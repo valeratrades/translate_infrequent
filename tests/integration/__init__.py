@@ -12,7 +12,7 @@ def run_integration_test(input_string, args, expected_output):
 
 	Args:
 		input_string (str): The input text to pass to stdin
-		args (list): List of (flag, value) tuples (e.g., [("-l", "de"), ("-w", "10")])
+		args (list): List of (flag, value) or (flag,) tuples (e.g., [("-l", "de"), ("-w", "10"), ("-p",)])
 		expected_output (str): The expected output string
 
 	Returns:
@@ -23,8 +23,8 @@ def run_integration_test(input_string, args, expected_output):
 
 	# Build command line arguments from tuples
 	cmd = [sys.executable, "-m", "src"]
-	for flag, value in args:
-		cmd.extend([flag, str(value)])
+	for arg in args:
+		cmd.extend(map(str, arg))
 
 	# Get project root (two levels up from this file)
 	project_root = os.path.join(os.path.dirname(__file__), '..', '..')
@@ -51,11 +51,11 @@ def run_integration_test(input_string, args, expected_output):
 
 		if actual_output == expected_output:
 			_passed_count += 1
-			args_str = ' '.join(f"{flag} {value}" for flag, value in args)
+			args_str = ' '.join(' '.join(map(str, arg)) for arg in args)
 			print(f"\n{_test_count}) \033[32mPASS\033[0m: {args_str}\n")
 			return True
 		else:
-			args_str = ' '.join(f"{flag} {value}" for flag, value in args)
+			args_str = ' '.join(' '.join(map(str, arg)) for arg in args)
 			print(f"\n{_test_count}) \033[31mFAIL\033[0m: {args_str}")
 			print(f"Input: {repr(input_string)}")
 			print(f"Expected: {repr(expected_output)}")
@@ -63,7 +63,7 @@ def run_integration_test(input_string, args, expected_output):
 			return False
 
 	except Exception as e:
-		args_str = ' '.join(f"{flag} {value}" for flag, value in args)
+		args_str = ' '.join(' '.join(map(str, arg)) for arg in args)
 		print(f"\n{_test_count}) \033[31mFAIL\033[0m: {args_str}")
 		print(f"Exception: {e}")
 		print(f"Command: {' '.join(cmd)}\n")

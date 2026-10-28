@@ -35,6 +35,7 @@
           translatepy
           jellyfish
           unicodedata2
+          phonemizer
         ]);
         pythonVersion = "python-${pythonPkgs.python.pythonVersion}";
 
