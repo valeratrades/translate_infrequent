@@ -2,6 +2,7 @@ import src
 import logging
 import asyncio
 import sys
+import os
 import argparse
 from translatepy import Language
 
@@ -14,6 +15,7 @@ def create_parser():
 	parser.add_argument("-f", "--file", type=str, help="Input file (default: stdin)")
 	parser.add_argument("-b", "--backend", choices=src.TRANSLATORS, default="google", help='Translation backend. DEFAULT: "google"')
 	parser.add_argument("-p", "--phonetic", action="store_true", help="Append IPA to each gloss")
+	parser.add_argument("--cache", nargs="?", const=True, default=None, metavar="PATH", help="Persist translations (and IPA) across runs. Bare flag: $XDG_CACHE_HOME/translate_infrequent/<src>-<dest>.log")
 	parser.add_argument("--fallback", choices=src.TRANSLATORS, default="ask_llm", help='Backend used once the primary one hits a captcha. DEFAULT: "ask_llm"')
 	return parser
 
@@ -42,7 +44,13 @@ def main():
 	source_lang = Language(args.source_lang)
 	target_lang = Language(args.target_lang)
 
-	out = asyncio.run(src.translate_infrequent(text, source_lang, words_n, target_lang, src.TRANSLATORS[args.backend](), src.TRANSLATORS[args.fallback](), args.phonetic))
+	cache_path = args.cache
+	if cache_path is True:
+		cache_dir = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+		cache_path = os.path.join(cache_dir, "translate_infrequent", f"{source_lang.alpha2}-{target_lang.alpha2}.log")
+	cache = src.Cache(cache_path) if cache_path else None
+
+	out = asyncio.run(src.translate_infrequent(text, source_lang, words_n, target_lang, src.TRANSLATORS[args.backend](), src.TRANSLATORS[args.fallback](), args.phonetic, cache))
 	print(out)
 
 

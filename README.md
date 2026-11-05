@@ -45,6 +45,8 @@ Returning
 muss mein Yak rasieren {shave}
 ```
 
+`--cache` keeps translations (and IPA) between runs, so already-seen words don't hit the translation backend again. Bare `--cache` uses `$XDG_CACHE_HOME/translate_infrequent/<src>-<dest>.log` (`~/.cache` if unset); `--cache PATH` uses that file. Safe to share between concurrent runs.
+
 
 
 <br>

@@ -14,8 +14,10 @@ import translatepy
 import unicodedata
 import sys
 import logging
+import json
+import os
 
-__all__ = ["translate_infrequent", "TRANSLATORS"]
+__all__ = ["translate_infrequent", "TRANSLATORS", "Cache"]
 
 # Configure logging to write to stderr
 logging.basicConfig(
@@ -26,7 +28,33 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool) -> str:
+class Cache:
+	"""append-only JSONL of raw translations (+ipa), shared by concurrent processes; later lines override earlier ones"""
+
+	def __init__(self, path: str):
+		self.path = path
+		self.entries: dict[str, dict[str, str]] = {}
+		if not os.path.exists(path):
+			return
+		with open(path, "r", encoding="utf-8") as f:
+			for n, line in enumerate(f, 1):
+				try:
+					entry = json.loads(line)
+					self.entries[entry["word"]] = {"translation": entry["translation"]} | ({"ipa": entry["ipa"]} if "ipa" in entry else {})
+				except (json.JSONDecodeError, KeyError, TypeError) as e:
+					raise ValueError(f"corrupt cache line {n} in {path}: {line!r}") from e
+
+	def append(self, entries: dict[str, dict[str, str]]) -> None:
+		if not entries:
+			return
+		blob = "".join(json.dumps({"word": w} | e, ensure_ascii=False) + "\n" for w, e in entries.items()).encode("utf-8")
+		os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
+		with open(self.path, "ab", buffering=0) as f:
+			assert f.write(blob) == len(blob)  # one write() so O_APPEND writers don't interleave
+		self.entries |= entries
+
+
+async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool, cache: Cache | None = None) -> str:
 	assert isinstance(text, str), f"text must be str, got {type(text).__name__}"
 	assert isinstance(src_lang, Language), f"src_lang must be Language, got {type(src_lang).__name__}"
 	assert isinstance(known_words, int), f"known_words must be int, got {type(known_words).__name__}"
@@ -38,18 +66,29 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 
 	rare_words = find_rare_words(words_set, src_lang, known_words)
 
-	word_translations: dict[str, str] = await batch_translate(rare_words, src_lang, dest_lang, primary, fallback)  # BOTTLENECK
-	logger.debug(f"translate_infrequent: raw_translations={word_translations}")
-	word_translations = filter_close_translations(word_translations)
+	known = cache.entries if cache else {}
+	missing = rare_words - known.keys()
+	fresh: dict[str, str] = await batch_translate(missing, src_lang, dest_lang, primary, fallback) if missing else {}  # BOTTLENECK
+	if cache:
+		cache.append({w: {"translation": t} for w, t in fresh.items()})
+	raw_translations = {w: known[w]["translation"] for w in rare_words - missing} | fresh
+	logger.debug(f"translate_infrequent: raw_translations={raw_translations}")
+	word_translations = filter_close_translations(raw_translations)
 	logger.debug(f"translate_infrequent: filtered_translations={word_translations}")
 	if phonetic:
 		espeak_voices = EspeakBackend.supported_languages()
 		if src_lang.alpha2 not in espeak_voices:
 			raise ValueError(f"no espeak voice for '{src_lang.name}' ({src_lang.alpha2})")
 		glossed = list(word_translations)
-		ipas = phonemize(glossed, language=src_lang.alpha2, backend="espeak", strip=True)
-		assert len(ipas) == len(glossed) and all(ipas), f"phonemize returned {ipas} for {glossed}"
-		word_translations = {w: f"{word_translations[w]} [{ipa}]" for w, ipa in zip(glossed, ipas)}
+		ipa_of = {w: known[w]["ipa"] for w in glossed if "ipa" in known.get(w, {})}
+		unknown = [w for w in glossed if w not in ipa_of]
+		if unknown:
+			ipas = phonemize(unknown, language=src_lang.alpha2, backend="espeak", strip=True)
+			assert len(ipas) == len(unknown) and all(ipas), f"phonemize returned {ipas} for {unknown}"
+			ipa_of |= dict(zip(unknown, ipas))
+			if cache:
+				cache.append({w: {"translation": raw_translations[w], "ipa": ipa_of[w]} for w in unknown})
+		word_translations = {w: f"{word_translations[w]} [{ipa_of[w]}]" for w in glossed}
 
 	compose = ""
 	i = 0
