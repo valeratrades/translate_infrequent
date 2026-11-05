@@ -109,7 +109,7 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 
 		i = word_start_i + len(word)
 
-	return compose
+	return compose + text[i:]
 
 
 def find_rare_words(words: set[str], src_lang: Language, known_words: int = 10_000) -> set[str]:
