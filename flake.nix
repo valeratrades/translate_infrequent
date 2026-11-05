@@ -36,6 +36,8 @@
           jellyfish
           unicodedata2
           phonemizer
+          simplemma
+          numpy
         ]);
         pythonVersion = "python-${pythonPkgs.python.pythonVersion}";
 

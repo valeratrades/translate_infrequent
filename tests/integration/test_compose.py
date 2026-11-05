@@ -12,5 +12,5 @@ class Echo:
 
 def test_text_after_last_word_is_kept():
 	text = "Muss mein Yak rasieren?!\n"
-	out = asyncio.run(translate_infrequent(text, Language("de"), 10_000, Language("en"), Echo(), Echo(), False))
+	out = asyncio.run(translate_infrequent(text, Language("de"), 10_000, Language("en"), Echo(), Echo(), False, history="", retention=300, decay_base=0.177, decay_spacing=0.217))
 	assert out.endswith("rasieren {shave}?!\n")

@@ -7,7 +7,10 @@ from phonemizer.backend import EspeakBackend
 from translatepy import Language
 from translatepy.utils.request import Request
 from typing import Protocol
+from collections import defaultdict
 import ask_llm_py
+import numpy as np
+import simplemma
 import re
 import asyncio
 import translatepy
@@ -54,17 +57,16 @@ class Cache:
 		self.entries |= entries
 
 
-async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool, cache: Cache | None = None) -> str:
+async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool, cache: Cache | None = None, *, history: str, retention: float, decay_base: float, decay_spacing: float) -> str:
 	assert isinstance(text, str), f"text must be str, got {type(text).__name__}"
 	assert isinstance(src_lang, Language), f"src_lang must be Language, got {type(src_lang).__name__}"
 	assert isinstance(known_words, int), f"known_words must be int, got {type(known_words).__name__}"
 	assert isinstance(dest_lang, Language), f"dest_lang must be Language, got {type(dest_lang).__name__}"
 
-	words_initial_order = re.split(r"[\s,.!?\(\)\"–:\[\]{}<>|/\\;]+", text)
-	words_set = set(words_initial_order)
-	words_set.discard("")  # split yields it at text edges
-
-	rare_words = find_rare_words(words_set, src_lang, known_words)
+	text_tokens = [w for w in SPLIT.split(text) if w]
+	history_tokens = [w for w in SPLIT.split(history) if w]
+	gloss = glossed_occurrences(history_tokens, text_tokens, src_lang, known_words, retention, decay_base, decay_spacing)
+	rare_words = {w.lower() for w, g in zip(text_tokens, gloss) if g}
 
 	known = cache.entries if cache else {}
 	missing = rare_words - known.keys()
@@ -90,64 +92,59 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 				cache.append({w: {"translation": raw_translations[w], "ipa": ipa_of[w]} for w in unknown})
 		word_translations = {w: f"{word_translations[w]} [{ipa_of[w]}]" for w in glossed}
 
-	compose = ""
+	compose = []
 	i = 0
-	for word in words_initial_order:
+	for word, g in zip(text_tokens, gloss):
 		word_start_i = text.index(word, i)
-
-		add_word = None  # hate python
-		# Check both original case and lowercase for translations
-		in_translations = word in word_translations or word.lower() in word_translations
-		translation_key = word if word in word_translations else word.lower()
-		if in_translations:
-			add_word = word + " {" + word_translations[translation_key] + "}"
-		else:
-			add_word = word
-
-		compose += text[i:word_start_i]
-		compose += add_word
-
+		compose += [text[i:word_start_i], word]
+		if g and word.lower() in word_translations:
+			compose.append(" {" + word_translations[word.lower()] + "}")
 		i = word_start_i + len(word)
 
-	return compose + text[i:]
+	return "".join(compose) + text[i:]
 
 
-def find_rare_words(words: set[str], src_lang: Language, known_words: int = 10_000) -> set[str]:
-	assert isinstance(words, set), f"words must be set[str], got {type(words).__name__}"
-	assert all(isinstance(word, str) for word in words), "all elements in words must be str"
-	assert isinstance(src_lang, Language), f"src_lang must be Language, got {type(src_lang).__name__}"
-	assert isinstance(known_words, int), f"known_words must be int, got {type(known_words).__name__}"
+SPLIT = re.compile(r"[\s,.!?\(\)\"–:\[\]{}<>|/\\;]+")
 
-	def lang_zipf_s(lang: Language) -> float:
-		alpha2 = lang.alpha2
-		if alpha2 == "en":
-			return 1.07
-		elif alpha2 == "de":
-			return 1.1
-		else:
-			L.warning(f"Don't know true `s` value of quasi-Zipfian distribution for '{lang.id}', defaulting to that of English (1.07)")
-			return 1.07  # default to English
 
-	rare_words: set[str] = set()
-	zipf_s = lang_zipf_s(src_lang)
-	if known_words == 0:
-		dub_unknown_threshold = float('inf')  # All words are rare when known_words=0
+def lang_zipf_s(lang: Language) -> float:
+	alpha2 = lang.alpha2
+	if alpha2 == "en":
+		return 1.07
+	elif alpha2 == "de":
+		return 1.1
 	else:
-		dub_unknown_threshold = 1 / (known_words**zipf_s)
+		L.warning(f"Don't know true `s` value of quasi-Zipfian distribution for '{lang.id}', defaulting to that of English (1.07)")
+		return 1.07  # default to English
 
-	logger.debug(f"find_rare_words: known_words={known_words}, zipf_s={zipf_s}, threshold={dub_unknown_threshold}")
 
-	for word in words:
-		freq = word_frequency(word.lower(), src_lang.alpha2)
-		is_rare = freq < dub_unknown_threshold and freq != 0.0
-		logger.debug(f"find_rare_words: word='{word}' (lower='{word.lower()}'), freq={freq}, is_rare={is_rare}")
-		# 0.0 would mean it's likely a name or technical term, so don't attempt to translate
-		if is_rare:
-			# Store the lowercased version for consistent lookup
-			rare_words.add(word.lower())
-
-	logger.debug(f"find_rare_words: rare_words={rare_words}")
-	return rare_words
+def glossed_occurrences(history: list[str], text: list[str], src_lang: Language, known_words: int, retention: float, decay_base: float, decay_spacing: float) -> list[bool]:
+	"""gloss decision per `text` token; `history` only builds memory. Model: docs/ARCHITECTURE.md"""
+	f_k = 1 / known_words ** lang_zipf_s(src_lang) if known_words else float("inf")
+	amplitude = retention**decay_base
+	rarity: dict[str, tuple[str, float] | None] = {}  # lowercase surface -> (lemma, ρ) if rare
+	traces: dict[str, tuple[list[int], list[float]]] = defaultdict(lambda: ([], []))  # lemma -> (sighting times, decay exponents)
+	gloss: list[bool] = []
+	for t, tok in enumerate(history + text):
+		low = tok.lower()
+		if low not in rarity:
+			lemma = simplemma.lemmatize(low, lang=src_lang.alpha2)
+			f = max(word_frequency(low, src_lang.alpha2), word_frequency(lemma, src_lang.alpha2))
+			rarity[low] = (lemma, f / f_k) if 0.0 < f < f_k else None  # f=0 is likely a name or technical term
+		if rarity[low] is None:
+			if t >= len(history):
+				gloss.append(False)
+			continue
+		lemma, rho = rarity[low]
+		ts, ds = traces[lemma]
+		perceived = rho + amplitude * np.power(t - np.array(ts, dtype=float), -np.array(ds)).sum()
+		if t >= len(history):
+			gloss.append(bool(perceived < 1))
+		ts.append(t)
+		ds.append(decay_base + decay_spacing * perceived)
+	assert len(gloss) == len(text)
+	logger.debug(f"glossed_occurrences: {sum(gloss)}/{len(text)} text tokens glossed")
+	return gloss
 
 
 class CaptchaError(Exception):

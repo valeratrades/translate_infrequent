@@ -16,6 +16,11 @@ def create_parser():
 	parser.add_argument("-b", "--backend", choices=src.TRANSLATORS, default="google", help='Translation backend. DEFAULT: "google"')
 	parser.add_argument("-p", "--phonetic", action="store_true", help="Append IPA to each gloss")
 	parser.add_argument("--cache", nargs="?", const=True, default=None, metavar="PATH", help="Persist translations (and IPA) across runs. Bare flag: $XDG_CACHE_HOME/translate_infrequent/<src>-<dest>.log")
+	parser.add_argument("--history", type=str, metavar="PATH", help="Text read before the input only to build memory of seen words; not emitted, not translated")
+	decay_help = "Pavlik & Anderson (2005) fit, with time measured in seconds; here time is tokens, so no value is known to be correct."
+	parser.add_argument("--retention", type=float, default=300, metavar="TOKENS", help="How long one sighting keeps a brand-new word known. 0 = gloss every occurrence (old behaviour). DEFAULT: 300")
+	parser.add_argument("--decay-base", type=float, default=0.177, help=f"Decay exponent of a sighting of a fully unknown word. {decay_help} DEFAULT: 0.177")
+	parser.add_argument("--decay-spacing", type=float, default=0.217, help=f"Extra decay per unit of familiarity at sighting time (massed repeats fade faster). {decay_help} DEFAULT: 0.217")
 	parser.add_argument("--fallback", choices=src.TRANSLATORS, default="ask_llm", help='Backend used once the primary one hits a captcha. DEFAULT: "ask_llm"')
 	return parser
 
@@ -41,6 +46,12 @@ def main():
 		else:
 			raise ValueError("No input text provided")
 
+	if args.history:
+		with open(args.history, "r", encoding="utf-8") as f:
+			history = f.read()
+	else:
+		history = ""
+
 	source_lang = Language(args.source_lang)
 	target_lang = Language(args.target_lang)
 
@@ -50,7 +61,7 @@ def main():
 		cache_path = os.path.join(cache_dir, "translate_infrequent", f"{source_lang.alpha2}-{target_lang.alpha2}.log")
 	cache = src.Cache(cache_path) if cache_path else None
 
-	out = asyncio.run(src.translate_infrequent(text, source_lang, words_n, target_lang, src.TRANSLATORS[args.backend](), src.TRANSLATORS[args.fallback](), args.phonetic, cache))
+	out = asyncio.run(src.translate_infrequent(text, source_lang, words_n, target_lang, src.TRANSLATORS[args.backend](), src.TRANSLATORS[args.fallback](), args.phonetic, cache, history=history, retention=args.retention, decay_base=args.decay_base, decay_spacing=args.decay_spacing))
 	print(out)
 
 
