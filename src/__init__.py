@@ -1,7 +1,7 @@
 from typing import Any, Self, Union, Optional, List, Tuple, Callable, TypeVar, Generic  # noqa: F401
 from .lib import L  # noqa: F401
 from icecream import ic  # noqa: F401
-from wordfreq import word_frequency
+from wordfreq import word_frequency, get_frequency_dict
 from phonemizer import phonemize
 from phonemizer.backend import EspeakBackend
 from translatepy import Language
@@ -19,6 +19,7 @@ import sys
 import logging
 import json
 import os
+import functools
 
 __all__ = ["translate_infrequent", "TRANSLATORS", "Cache"]
 
@@ -57,7 +58,7 @@ class Cache:
 		self.entries |= entries
 
 
-async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool, cache: Cache | None = None, *, history: str, retention: float, decay_base: float, decay_spacing: float) -> str:
+async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool, cache: Cache | None = None, *, history: str, retention: float, decay_base: float, decay_spacing: float, lemma_credit: float) -> str:
 	assert isinstance(text, str), f"text must be str, got {type(text).__name__}"
 	assert isinstance(src_lang, Language), f"src_lang must be Language, got {type(src_lang).__name__}"
 	assert isinstance(known_words, int), f"known_words must be int, got {type(known_words).__name__}"
@@ -65,7 +66,7 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 
 	text_tokens = [w for w in SPLIT.split(text) if w]
 	history_tokens = [w for w in SPLIT.split(history) if w]
-	gloss = glossed_occurrences(history_tokens, text_tokens, src_lang, known_words, retention, decay_base, decay_spacing)
+	gloss = glossed_occurrences(history_tokens, text_tokens, src_lang, known_words, retention, decay_base, decay_spacing, lemma_credit)
 	rare_words = {w.lower() for w, g in zip(text_tokens, gloss) if g}
 
 	known = cache.entries if cache else {}
@@ -118,33 +119,85 @@ def lang_zipf_s(lang: Language) -> float:
 		return 1.07  # default to English
 
 
-def glossed_occurrences(history: list[str], text: list[str], src_lang: Language, known_words: int, retention: float, decay_base: float, decay_spacing: float) -> list[bool]:
+def glossed_occurrences(history: list[str], text: list[str], src_lang: Language, known_words: int, retention: float, decay_base: float, decay_spacing: float, lemma_credit: float) -> list[bool]:
 	"""gloss decision per `text` token; `history` only builds memory. Model: docs/ARCHITECTURE.md"""
+	lang = src_lang.alpha2
 	f_k = 1 / known_words ** lang_zipf_s(src_lang) if known_words else float("inf")
 	amplitude = retention**decay_base
 	rarity: dict[str, tuple[str, float] | None] = {}  # lowercase surface -> (lemma, ρ) if rare
-	traces: dict[str, tuple[list[int], list[float]]] = defaultdict(lambda: ([], []))  # lemma -> (sighting times, decay exponents)
+	traces: dict[str, dict[str, tuple[list[int], list[float]]]] = defaultdict(dict)  # lemma -> form -> (sighting times, decay exponents)
 	gloss: list[bool] = []
 	for t, tok in enumerate(history + text):
 		low = tok.lower()
 		if low not in rarity:
-			lemma = simplemma.lemmatize(low, lang=src_lang.alpha2)
-			f = max(word_frequency(low, src_lang.alpha2), word_frequency(lemma, src_lang.alpha2))
+			lemma = simplemma.lemmatize(low, lang=lang).lower()
+			f_form, f_lemma = word_frequency(low, lang), word_frequency(lemma, lang)
+			if f_lemma > f_form:
+				credit = lemma_credit * end_similarity(low, lemma)
+				f = (f_form or wordfreq_floor(lang)) ** (1 - credit) * f_lemma**credit  # a form wordfreq never saw is rarer than anything it lists
+			else:
+				f = f_form
 			rarity[low] = (lemma, f / f_k) if 0.0 < f < f_k else None  # f=0 is likely a name or technical term
 		if rarity[low] is None:
 			if t >= len(history):
 				gloss.append(False)
 			continue
 		lemma, rho = rarity[low]
-		ts, ds = traces[lemma]
-		perceived = rho + amplitude * np.power(t - np.array(ts, dtype=float), -np.array(ds)).sum()
+		recalled = sum((1.0 if form == low else lemma_credit * end_similarity(low, form)) * np.power(t - np.array(ts, dtype=float), -np.array(ds)).sum() for form, (ts, ds) in traces[lemma].items())
+		perceived = rho + amplitude * recalled
 		if t >= len(history):
 			gloss.append(bool(perceived < 1))
+		ts, ds = traces[lemma].setdefault(low, ([], []))
 		ts.append(t)
 		ds.append(decay_base + decay_spacing * perceived)
 	assert len(gloss) == len(text)
 	logger.debug(f"glossed_occurrences: {sum(gloss)}/{len(text)} text tokens glossed")
 	return gloss
+
+
+@functools.cache
+def wordfreq_floor(lang: str) -> float:
+	return min(get_frequency_dict(lang).values())
+
+
+def strip_accents(s: str) -> str:
+	return "".join(c for c in unicodedata.normalize("NFKD", s.lower()) if not unicodedata.combining(c))
+
+
+def jaro_winkler_at(a: str, b: str, offset: int) -> float:
+	"""jellyfish's Jaro-Winkler, except `a[i]` is looked for around `b[i + offset]`"""
+	window = max(max(len(a), len(b)) // 2 - 1, 0)
+	a_hit, b_hit, m = [False] * len(a), [False] * len(b), 0
+	for i, c in enumerate(a):
+		for j in range(max(0, i + offset - window), min(len(b), i + offset + window + 1)):
+			if not b_hit[j] and b[j] == c:
+				a_hit[i] = b_hit[j] = True
+				m += 1
+				break
+	if not m:
+		return 0.0
+	k = transposed = 0
+	for i in range(len(a)):
+		if a_hit[i]:
+			while not b_hit[k]:
+				k += 1
+			transposed += a[i] != b[k]
+			k += 1
+	jaro = (m / len(a) + m / len(b) + (m - transposed // 2) / m) / 3
+	if jaro <= 0.7:
+		return jaro
+	prefix = 0
+	while prefix < 4 and prefix < len(a) and 0 <= prefix + offset < len(b) and a[prefix] == b[prefix + offset]:
+		prefix += 1
+	return jaro + prefix * 0.1 * (1 - jaro)
+
+
+@functools.cache
+def end_similarity(a: str, b: str) -> float:
+	"""Jaro-Winkler, also with the shorter word aligned to the longer one's end, so a stripped prefix (ел/поел) still matches. Only for two forms of one word: on unrelated strings, containment alone scores high (nsa/mensa)"""
+	a, b = sorted((strip_accents(a), strip_accents(b)), key=len)
+	assert a and b, "tokens are non-empty"
+	return max(jaro_winkler_at(a, b, 0), jaro_winkler_at(a, b, len(b) - len(a)))
 
 
 class CaptchaError(Exception):
@@ -240,16 +293,10 @@ async def batch_translate(words: set[str], src_lang: Language, dest_lang: Langua
 
 
 def filter_close_translations(translations: dict[str, str]) -> dict[str, str]:
-	def normalize_no_accents(s):
-		"""Remove accents and normalize Unicode characters"""
-		return "".join(c for c in unicodedata.normalize("NFKD", s.lower()) if not unicodedata.combining(c))
-
 	def jaro_winkler(word1, word2):
 		from jellyfish import jaro_winkler_similarity
 
-		n1 = normalize_no_accents(word1)
-		n2 = normalize_no_accents(word2)
-		return jaro_winkler_similarity(n1, n2)
+		return jaro_winkler_similarity(strip_accents(word1), strip_accents(word2))
 
 	filtered: dict[str, str] = {}
 	for word, translation in translations.items():

@@ -13,7 +13,7 @@ class Gloss:
 
 def check(text: str, word: str, glossed: list[int], history: str = "", retention: float = 300) -> str:
 	"""`glossed`: which occurrences of `word` in the output carry a gloss"""
-	out = asyncio.run(translate_infrequent(text, Language("de"), 5_000, Language("en"), Gloss(), Gloss(), False, history=history, retention=retention, decay_base=0.177, decay_spacing=0.217))
+	out = asyncio.run(translate_infrequent(text, Language("de"), 5_000, Language("en"), Gloss(), Gloss(), False, history=history, retention=retention, decay_base=0.177, decay_spacing=0.217, lemma_credit=1))
 	marks = [bool(m[1]) for m in re.finditer(rf"\b{word}\b( \{{gloss\}})?", out, re.I)]
 	assert [i for i, m in enumerate(marks) if m] == glossed, out
 	return out
@@ -33,3 +33,9 @@ def test_history_counts_as_seen_and_is_not_emitted():
 
 def test_memory_decays():
 	check("Erdling " + "und " * 1000 + "Erdling.", "erdling", [0, 1])
+
+
+def test_inflection_is_known_through_its_lemma_only_as_far_as_it_looks_alike():
+	text = "Du warst mit den Händen da."
+	check(text, "warst", [0])
+	check(text, "händen", [])

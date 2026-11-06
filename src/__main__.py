@@ -21,6 +21,7 @@ def create_parser():
 	parser.add_argument("--retention", type=float, default=300, metavar="TOKENS", help="How long one sighting keeps a brand-new word known. 0 = gloss every occurrence (old behaviour). DEFAULT: 300")
 	parser.add_argument("--decay-base", type=float, default=0.177, help=f"Decay exponent of a sighting of a fully unknown word. {decay_help} DEFAULT: 0.177")
 	parser.add_argument("--decay-spacing", type=float, default=0.217, help=f"Extra decay per unit of familiarity at sighting time (massed repeats fade faster). {decay_help} DEFAULT: 0.217")
+	parser.add_argument("--lemma-credit", type=float, default=1.0, metavar="K", help="How much a known dictionary form makes its inflections known, scaled by their spelling similarity (warst/sein ≈ 0, Händen/Hand ≈ 0.93). 0 = every form stands on its own. DEFAULT: 1")
 	parser.add_argument("--fallback", choices=src.TRANSLATORS, default="ask_llm", help='Backend used once the primary one hits a captcha. DEFAULT: "ask_llm"')
 	return parser
 
@@ -61,7 +62,7 @@ def main():
 		cache_path = os.path.join(cache_dir, "translate_infrequent", f"{source_lang.alpha2}-{target_lang.alpha2}.log")
 	cache = src.Cache(cache_path) if cache_path else None
 
-	out = asyncio.run(src.translate_infrequent(text, source_lang, words_n, target_lang, src.TRANSLATORS[args.backend](), src.TRANSLATORS[args.fallback](), args.phonetic, cache, history=history, retention=args.retention, decay_base=args.decay_base, decay_spacing=args.decay_spacing))
+	out = asyncio.run(src.translate_infrequent(text, source_lang, words_n, target_lang, src.TRANSLATORS[args.backend](), src.TRANSLATORS[args.fallback](), args.phonetic, cache, history=history, retention=args.retention, decay_base=args.decay_base, decay_spacing=args.decay_spacing, lemma_credit=args.lemma_credit))
 	print(out)
 
 
