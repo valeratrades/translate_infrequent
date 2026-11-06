@@ -20,6 +20,7 @@ import logging
 import json
 import os
 import functools
+import math
 
 __all__ = ["translate_infrequent", "TRANSLATORS", "Cache"]
 
@@ -58,7 +59,7 @@ class Cache:
 		self.entries |= entries
 
 
-async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool, cache: Cache | None = None, *, history: str, retention: float, decay_base: float, decay_spacing: float, lemma_credit: float) -> str:
+async def translate_infrequent(text: str, src_lang: Language, known_words: int, dest_lang: Language, primary: "Translator", fallback: "Translator", phonetic: bool, cache: Cache | None = None, *, history: str, retention: float, decay_base: float, decay_spacing: float, similarity_power: float) -> str:
 	assert isinstance(text, str), f"text must be str, got {type(text).__name__}"
 	assert isinstance(src_lang, Language), f"src_lang must be Language, got {type(src_lang).__name__}"
 	assert isinstance(known_words, int), f"known_words must be int, got {type(known_words).__name__}"
@@ -66,7 +67,7 @@ async def translate_infrequent(text: str, src_lang: Language, known_words: int, 
 
 	text_tokens = [w for w in SPLIT.split(text) if w]
 	history_tokens = [w for w in SPLIT.split(history) if w]
-	gloss = glossed_occurrences(history_tokens, text_tokens, src_lang, known_words, retention, decay_base, decay_spacing, lemma_credit)
+	gloss = glossed_occurrences(history_tokens, text_tokens, src_lang, known_words, retention, decay_base, decay_spacing, similarity_power)
 	rare_words = {w.lower() for w, g in zip(text_tokens, gloss) if g}
 
 	known = cache.entries if cache else {}
@@ -119,7 +120,7 @@ def lang_zipf_s(lang: Language) -> float:
 		return 1.07  # default to English
 
 
-def glossed_occurrences(history: list[str], text: list[str], src_lang: Language, known_words: int, retention: float, decay_base: float, decay_spacing: float, lemma_credit: float) -> list[bool]:
+def glossed_occurrences(history: list[str], text: list[str], src_lang: Language, known_words: int, retention: float, decay_base: float, decay_spacing: float, similarity_power: float) -> list[bool]:
 	"""gloss decision per `text` token; `history` only builds memory. Model: docs/ARCHITECTURE.md"""
 	lang = src_lang.alpha2
 	f_k = 1 / known_words ** lang_zipf_s(src_lang) if known_words else float("inf")
@@ -133,8 +134,9 @@ def glossed_occurrences(history: list[str], text: list[str], src_lang: Language,
 			lemma = simplemma.lemmatize(low, lang=lang).lower()
 			f_form, f_lemma = word_frequency(low, lang), word_frequency(lemma, lang)
 			if f_lemma > f_form:
-				credit = lemma_credit * end_similarity(low, lemma)
-				f = (f_form or wordfreq_floor(lang)) ** (1 - credit) * f_lemma**credit  # a form wordfreq never saw is rarer than anything it lists
+				share = end_similarity(low, lemma) ** similarity_power
+				log_form = math.log(f_form or wordfreq_floor(lang))  # a form wordfreq never saw is rarer than anything it lists
+				f = math.exp(log_form + share * (math.log(f_lemma) - log_form))
 			else:
 				f = f_form
 			rarity[low] = (lemma, f / f_k) if 0.0 < f < f_k else None  # f=0 is likely a name or technical term
@@ -143,7 +145,7 @@ def glossed_occurrences(history: list[str], text: list[str], src_lang: Language,
 				gloss.append(False)
 			continue
 		lemma, rho = rarity[low]
-		recalled = sum((1.0 if form == low else lemma_credit * end_similarity(low, form)) * np.power(t - np.array(ts, dtype=float), -np.array(ds)).sum() for form, (ts, ds) in traces[lemma].items())
+		recalled = sum(end_similarity(low, form) ** similarity_power * np.power(t - np.array(ts, dtype=float), -np.array(ds)).sum() for form, (ts, ds) in traces[lemma].items())
 		perceived = rho + amplitude * recalled
 		if t >= len(history):
 			gloss.append(bool(perceived < 1))

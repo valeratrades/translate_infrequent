@@ -11,4 +11,4 @@ muss mein Yak rasieren {shave}
 
 A word isn't glossed at every occurrence: each sighting is remembered, decaying over the following tokens, and the gloss returns only once the word is likely forgotten (model in [ARCHITECTURE.md](../ARCHITECTURE.md)). `--retention TOKENS` sets how long one sighting keeps a brand-new word known (`0` glosses every occurrence); `--decay-base` and `--decay-spacing` shape the decay. `--history PATH` feeds text read earlier (e.g. previous chapters) into that memory without emitting or translating it.
 
-An inflection is as known as its dictionary form only as far as the two look alike: with `-w 5000`, `Händen` rides on `Hand`, but `warst` doesn't ride on `sein`. `--lemma-credit` scales that (`0` = every form stands on its own).
+An inflection inherits its dictionary form's familiarity only as far as the two are spelled alike: with `-w 5000`, `Händen` rides on `Hand`, but `warst` doesn't ride on `sein`. `--similarity-power` sets how fast that inheritance falls off with dissimilarity (`0` = every inflection is as known as its dictionary form).

@@ -13,7 +13,7 @@ class Gloss:
 
 def check(text: str, word: str, glossed: list[int], history: str = "", retention: float = 300) -> str:
 	"""`glossed`: which occurrences of `word` in the output carry a gloss"""
-	out = asyncio.run(translate_infrequent(text, Language("de"), 5_000, Language("en"), Gloss(), Gloss(), False, history=history, retention=retention, decay_base=0.177, decay_spacing=0.217, lemma_credit=1))
+	out = asyncio.run(translate_infrequent(text, Language("de"), 5_000, Language("en"), Gloss(), Gloss(), False, history=history, retention=retention, decay_base=0.177, decay_spacing=0.217, similarity_power=2))
 	marks = [bool(m[1]) for m in re.finditer(rf"\b{word}\b( \{{gloss\}})?", out, re.I)]
 	assert [i for i, m in enumerate(marks) if m] == glossed, out
 	return out

@@ -16,7 +16,7 @@ class CountingTranslator:
 
 
 def run(cache_path, translator, phonetic=False):
-	return asyncio.run(translate_infrequent("Muss mein Yak rasieren", Language("de"), 10_000, Language("en"), translator, translator, phonetic, Cache(cache_path), history="", retention=300, decay_base=0.177, decay_spacing=0.217, lemma_credit=1))
+	return asyncio.run(translate_infrequent("Muss mein Yak rasieren", Language("de"), 10_000, Language("en"), translator, translator, phonetic, Cache(cache_path), history="", retention=300, decay_base=0.177, decay_spacing=0.217, similarity_power=2))
 
 
 def test_second_run_makes_no_translator_calls(tmp_path):
