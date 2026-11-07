@@ -16,16 +16,20 @@
         rust = v_flakes.rs.default_nightly system;
         pre-commit-check = pre-commit-hooks.lib.${system}.run (v_flakes.files.preCommit { inherit pkgs; });
 
-        rustPlatform = pkgs.makeRustPlatform { rustc = rust; cargo = rust; };
+        build_rust = v_flakes.rs.build_nightly system;
+        rustPlatform = pkgs.makeRustPlatform { rustc = build_rust; cargo = build_rust; };
         askLlmPy = pkgs.python312.pkgs.buildPythonPackage {
           pname = "ask_llm_py";
           version = "0.1.0";
           format = "pyproject";
           src = ./ask_llm_py;
           cargoDeps = rustPlatform.importCargoLock { lockFile = ./ask_llm_py/Cargo.lock; };
-          nativeBuildInputs = [ rustPlatform.cargoSetupHook rustPlatform.maturinBuildHook rust pkgs.maturin ];
-          RUSTC = "${rust}/bin/rustc";
-          CARGO = "${rust}/bin/cargo";
+          nativeBuildInputs = [
+            rustPlatform.cargoSetupHook
+            (rustPlatform.maturinBuildHook.overrideAttrs { propagatedBuildInputs = [ pkgs.maturin build_rust ]; }) # nixpkgs' propagates stable cargo/rustc, ahead of ours on PATH
+          ];
+          RUSTC = "${build_rust}/bin/rustc";
+          CARGO = "${build_rust}/bin/cargo";
         };
 
         pythonPkgs = pkgs.python312.withPackages (ps: with ps; [
@@ -49,6 +53,7 @@
           lastSupportedVersion = pythonVersion;
           jobs.warnings.augment = [ "tokei" ];
           gitignore.extra = "ask_llm_py/target";
+          publishCachix = { name = "valeratrades"; tags = true; };
         };
         readme = v_flakes.readme-fw {
           inherit pkgs pname;
