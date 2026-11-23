@@ -1,5 +1,4 @@
 # translate_infrequent
-![Minimum Supported Rust Version](https://img.shields.io/badge/nightly-2026--06--29+-ab6000.svg)
 ![Lines Of Code](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/valeratrades/b48e6f02c61942200e7d1e3eeabf9bcb/raw/translate_infrequent-loc.json)
 <br>
 [![errors](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/valeratrades/b48e6f02c61942200e7d1e3eeabf9bcb/raw/translate_infrequent-errors.json)](https://github.com/valeratrades/translate_infrequent/actions/workflows/errors.yml?query=branch%3Amain)

@@ -62,7 +62,7 @@
           inherit oldestSupportedVersion;
           rootDir = ./.;
           licenses = [{ license = v_flakes.files.licenses.blue_oak; }];
-          badges = [ "msrv" "loc" "ci" ];
+          badges = [ "loc" "ci" ];
         };
 
         combined = v_flakes.utils.combine { inherit rust; modules = [ github readme ]; };
