@@ -1,9 +1,9 @@
 # translate_infrequent
-![Minimum Supported Rust Version](https://img.shields.io/badge/python-3.12+-ab6000.svg)
+![Minimum Supported Rust Version](https://img.shields.io/badge/nightly-2026--06--29+-ab6000.svg)
 ![Lines Of Code](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/valeratrades/b48e6f02c61942200e7d1e3eeabf9bcb/raw/translate_infrequent-loc.json)
 <br>
-[<img alt="ci errors" src="https://img.shields.io/github/actions/workflow/status/valeratrades/translate_infrequent/errors.yml?branch=main&style=for-the-badge&style=flat-square&label=errors&labelColor=420d09" height="20">](https://github.com/valeratrades/translate_infrequent/actions?query=branch%3Amain) <!--NB: Won't find it if repo is private-->
-[<img alt="ci warnings" src="https://img.shields.io/github/actions/workflow/status/valeratrades/translate_infrequent/warnings.yml?branch=main&style=for-the-badge&style=flat-square&label=warnings&labelColor=d16002" height="20">](https://github.com/valeratrades/translate_infrequent/actions?query=branch%3Amain) <!--NB: Won't find it if repo is private-->
+[![errors](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/valeratrades/b48e6f02c61942200e7d1e3eeabf9bcb/raw/translate_infrequent-errors.json)](https://github.com/valeratrades/translate_infrequent/actions/workflows/errors.yml?query=branch%3Amain)
+[![warnings](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/valeratrades/b48e6f02c61942200e7d1e3eeabf9bcb/raw/translate_infrequent-warnings.json)](https://github.com/valeratrades/translate_infrequent/actions/workflows/warnings.yml?query=branch%3Amain)
 
 [![Semi-explained in here](https://img.youtube.com/vi/i3SgbN1i3pI/0.jpg)](https://www.youtube.com/watch?v=i3SgbN1i3pI&t=166)
 
@@ -63,9 +63,11 @@ An inflection inherits its dictionary form's familiarity only as far as the two 
 
 <br>
 
-<sup>
-	This repository follows <a href="https://github.com/valeratrades/.github/tree/master/best_practices">my best practices</a> and <a href="https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md">Tiger Style</a> (except "proper capitalization for acronyms": (VsrState, not VSRState) and formatting). For contributing, see <a href="https://github.com/EV-Main/.github/blob/main/code/conventions/git">contribution process</a>. For project's architecture, see <a href="./docs/ARCHITECTURE.md">ARCHITECTURE.md</a>.
-</sup>
+#### Dev links
+- <sup><a href="./docs/ARCHITECTURE.md">architecture</a></sup>
+- <sup><a href="https://github.com/EV-Main/.github/blob/main/code/STYLE.md">style</a></sup>
+- <sup><a href="https://github.com/EV-Main/.github/tree/main/code/conventions">conventions</a></sup>
+- <sup><a href="https://github.com/EV-Main/.github/blob/main/code/conventions/git">contributing</a></sup>
 
 #### License
 

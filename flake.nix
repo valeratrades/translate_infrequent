@@ -45,19 +45,21 @@
         ]);
         pythonVersion = "python-${pythonPkgs.python.pythonVersion}";
 
+        oldestSupportedVersion = "nightly-2026-06-29";
+
         github = v_flakes.github {
           inherit pkgs pname;
           rs = { inherit rust; }; # `enable` runs append_custom.rs through cargo, which github only reaches via `rs`
           langs = [ "py" ]; # a non-null `rs` otherwise infers "rs" into the generated gitignore and CI defaults
           enable = true;
-          lastSupportedVersion = pythonVersion;
+          inherit oldestSupportedVersion;
           jobs.warnings.augment = [ "tokei" ];
           gitignore.extra = "ask_llm_py/target";
           publishCachix = { name = "valeratrades"; tags = true; };
         };
         readme = v_flakes.readme-fw {
           inherit pkgs pname;
-          lastSupportedVersion = pythonVersion;
+          inherit oldestSupportedVersion;
           rootDir = ./.;
           licenses = [{ license = v_flakes.files.licenses.blue_oak; }];
           badges = [ "msrv" "loc" "ci" ];
